@@ -8,12 +8,24 @@
 </head>
 <body>
 
+  <!-- SVG-иконки, используемые в разметке -->
+  <svg style="display:none">
+    <symbol id="coin-icon" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11" fill="#ffd700" stroke="#daa520" stroke-width="1.5"/>
+      <circle cx="12" cy="12" r="8.5" fill="none" stroke="#b8860b" stroke-width="1"/>
+      <text x="12" y="16.5" text-anchor="middle" font-size="11" font-family="sans-serif" fill="#8a6d00" font-weight="bold">$</text>
+    </symbol>
+  </svg>
+
   <!-- Главный экран -->
   <section class="screen active" id="screen-home">
     <div class="container">
       <h1>Математический тренажёр</h1>
       <div id="streak-display" class="streak"></div>
-      <div id="coins-display" class="coins-display" title="Твои монетки">🪙 0</div>
+      <div id="coins-display" class="coins-display" title="Твои монетки">
+        <svg class="coin-icon" aria-hidden="true"><use href="#coin-icon"></use></svg>
+        <span class="coin-count">0</span>
+      </div>
       <div id="topics-grid" class="topics-grid"></div>
       <button id="btn-error-review" class="topic-card module-review">
         <div class="topic-title">Работа над ошибками</div>
@@ -144,7 +156,11 @@
       <h2 id="result-grade"></h2>
       <div id="result-stars" class="result-stars"></div>
       <div id="result-summary" class="result-summary"></div>
-      <div id="result-coins" class="result-coins"></div>
+      <div id="result-coins" class="result-coins" style="display:none">
+        <span class="coin-label"></span>
+        <svg class="coin-icon" aria-hidden="true"><use href="#coin-icon"></use></svg>
+        <span class="coin-count"></span>
+      </div>
       <div id="result-errors" class="result-errors"></div>
       <button id="btn-result-home" class="btn btn-primary">На главную</button>
     </div>
