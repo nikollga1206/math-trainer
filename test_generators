@@ -1,0 +1,549 @@
+# Валидация генераторов «Математического тренажёра» через quickjs.
+# Запуск: .venv/Scripts/python.exe test_generators.py
+import json
+import re
+import sys
+import quickjs
+
+BASE = "js"
+
+ctx = quickjs.Context()
+# Шимы браузерного окружения
+ctx.eval("var window = {}; var __store = {};"
+         "var localStorage = {getItem:function(k){return __store[k]||null;},"
+         "setItem:function(k,v){__store[k]=v;},removeItem:function(k){delete __store[k];}};")
+
+for f in ["utils.js", "generators/multiplication.js", "generators/addsub.js",
+          "generators/order.js", "generators/length.js", "generators/time.js",
+          "generators/mass.js", "generators/geometry.js", "storage.js", "tasks.js"]:
+    with open(f"{BASE}/{f}", encoding="utf-8") as fh:
+        ctx.eval(fh.read())
+
+# Забираем задания пачкой в JSON
+ctx.eval("""
+function __gen(topicId, level, n) {
+  var out = [];
+  for (var i = 0; i < n; i++) out.push(window.Generators[topicId](level));
+  return JSON.stringify(out);
+}
+function __makeSet(topicId, level, n) { return JSON.stringify(window.Tasks.makeSet(topicId, level, n)); }
+""")
+
+LEN = {"мм": 1, "см": 10, "дм": 100, "м": 1000, "км": 1000000}
+TIME = {"с": 1, "мин": 60, "ч": 3600, "сутки": 86400, "неделя": 604800, "мес.": 1, "год": 12}
+MASS = {"г": 1, "кг": 1000, "ц": 100000, "т": 1000000}
+
+errors = []
+
+
+def fail(msg):
+    errors.append(msg)
+
+
+def check_common(t, topic):
+    if t["topicId"] != topic:
+        fail(f"{topic}: неверный topicId {t['topicId']}")
+    if not t.get("subtype") or not t.get("text") or not t.get("explanation"):
+        fail(f"{topic}: пустое поле в {t}")
+    ans = t["answer"]
+    if isinstance(ans, list):
+        # Задание со временем: массив допустимых строк «Ч:ММ»
+        if t["subtype"] != "clock":
+            fail(f"{topic}: массив ответов вне подтипа clock: {t['text']}")
+        if not t.get("inputColon"):
+            fail(f"{topic}: clock без inputColon: {t['text']}")
+        if len(ans) < 1:
+            fail(f"{topic}: пустой массив ответов: {t['text']}")
+        for a in ans:
+            if not re.match(r"^\d{1,2}:\d{2}$", a):
+                fail(f"{topic}: недопустимый ответ времени {a!r} в {t['text']}")
+    elif isinstance(ans, str):
+        if ans not in (">", "<", "="):
+            fail(f"{topic}: недопустимый строковый ответ {ans!r} в {t['text']}")
+    else:
+        if not float(ans).is_integer():
+            fail(f"{topic}: нецелый ответ {ans} в {t['text']}")
+        if ans < 0:
+            fail(f"{topic}: отрицательный ответ {ans} в {t['text']}")
+    if "unitOptions" in t and t["unitOptions"] is not None:
+        if t.get("answerUnit") not in t["unitOptions"]:
+            fail(f"{topic}: answerUnit не из unitOptions в {t['text']}")
+
+
+def check_mul_limit(text, topic):
+    """Пункт 5: каждое умножение — произведение ≤ 81 либо множитель 10/100/1000."""
+    for a, b in re.findall(r"(\d+) × (\d+)", text):
+        a, b = int(a), int(b)
+        if a * b > 81 and a not in (10, 100, 1000) and b not in (10, 100, 1000):
+            fail(f"{topic}: умножение за пределами таблицы {a} × {b} в {text}")
+    # Случай '(a + b) × c': проверяем сумму × c
+    m = re.search(r"\((\d+) \+ (\d+)\) × (\d+)", text)
+    if m:
+        s, c = int(m.group(1)) + int(m.group(2)), int(m.group(3))
+        if s * c > 81:
+            fail(f"{topic}: ({m.group(1)} + {m.group(2)}) × {c} = {s * c} > 81 в {text}")
+
+
+def js_eval_expr(expr):
+    # Вычисляет арифметическое выражение с × ÷ −, проверяя целочисленность делений
+    e = expr.replace("×", "*").replace("÷", "/").replace("−", "-")
+    tokens = re.findall(r"\d+|[()+\-*/]", e)
+    # Простая проверка: все деления нацело — вычисляем через Fraction
+    from fractions import Fraction
+    py = e
+    # заменяем числа на Fraction
+    py = re.sub(r"\d+", lambda m: f"F({m.group(0)})", py)
+    F = Fraction
+    val = eval(py)  # выражение из нашего же генератора, безопасно
+    return val
+
+
+def check_arith(t, topic):
+    """Проверка примеров вида '<выражение> = ?' и пропусков."""
+    text = t["text"]
+    m = re.match(r"^(.+) = \?$", text)
+    if m:
+        val = js_eval_expr(m.group(1))
+        if val.denominator != 1:
+            fail(f"{topic}: нецелый результат {val} в {text}")
+        if int(val) != t["answer"]:
+            fail(f"{topic}: answer={t['answer']} != {val} в {text}")
+        return
+    m = re.match(r"^(\d+) × _ = (\d+)$", text)
+    if m:
+        a, c = int(m.group(1)), int(m.group(2))
+        if c % a != 0 or c // a != t["answer"]:
+            fail(f"{topic}: пропуск неверен в {text}, answer={t['answer']}")
+        return
+    m = re.match(r"^_ × (\d+) = (\d+)$", text)
+    if m:
+        b, c = int(m.group(1)), int(m.group(2))
+        if c % b != 0 or c // b != t["answer"]:
+            fail(f"{topic}: пропуск неверен в {text}, answer={t['answer']}")
+        return
+    fail(f"{topic}: нераспознанный текст {text}")
+
+
+def check_units_convert(t, table, topic):
+    # Текст: 'N ед = _ ?' (unitOptions) или 'N ед = _ ед2'
+    m = re.match(r"^(\d+) (\S+) = _ (\?|\S+)$", t["text"])
+    if not m:
+        fail(f"{topic}: нераспознанный convert {t['text']}")
+        return
+    n, u_from = int(m.group(1)), m.group(2)
+    u_to = t.get("answerUnit") or m.group(3)
+    expected = n * table[u_from] // table[u_to]
+    if n * table[u_from] % table[u_to] != 0 or expected != t["answer"]:
+        fail(f"{topic}: convert неверен {t['text']} answer={t['answer']}, ожидалось {expected} {u_to}")
+
+
+def check_units_compare(t, table, topic):
+    m = re.match(r"^(\d+) (\S+) _ (\d+) (\S+)$", t["text"])
+    if not m:
+        fail(f"{topic}: нераспознанный compare {t['text']}")
+        return
+    v1, u1, v2, u2 = int(m.group(1)), m.group(2), int(m.group(3)), m.group(4)
+    left, right = v1 * table[u1], v2 * table[u2]
+    sign = ">" if left > right else "<" if left < right else "="
+    if sign != t["answer"]:
+        fail(f"{topic}: compare неверен {t['text']} answer={t['answer']}, верно {sign}")
+
+
+def check_units_calc(t, table, topic):
+    m = re.match(r"^(\d+) (\S+) (\d+) (\S+) ([+−]) (\d+) (\S+) = _ (\S+)$", t["text"])
+    if not m:
+        fail(f"{topic}: нераспознанный calc {t['text']}")
+        return
+    n1, ub, s1, us, op, s2, us2, ures = m.groups()
+    total = int(n1) * table[ub] + int(s1) * table[us]
+    total = total + int(s2) * table[us2] if op == "+" else total - int(s2) * table[us2]
+    if total < 0:
+        fail(f"{topic}: отрицательный calc {t['text']}")
+    if total // table[ures] != t["answer"] or total % table[ures] != 0:
+        fail(f"{topic}: calc неверен {t['text']} answer={t['answer']}, верно {total // table[ures]}")
+
+
+def check_time_composite(t):
+    # Составной перевод: '1 ч 20 мин = _ мин'
+    m = re.match(r"^(\d+) (\S+) (\d+) (\S+) = _ (\S+)$", t["text"])
+    if not m:
+        fail(f"time: нераспознанный составной convert {t['text']}")
+        return
+    n, ub, s, us, ures = m.groups()
+    expected = (int(n) * TIME[ub] + int(s) * TIME[us]) // TIME[ures]
+    if expected != t["answer"]:
+        fail(f"time: составной convert неверен {t['text']} answer={t['answer']}, верно {expected}")
+
+
+# Названия часов для пересчёта словесных формулировок
+HOUR_WORDS = ['двенадцать', 'один', 'два', 'три', 'четыре', 'пять', 'шесть',
+              'семь', 'восемь', 'девять', 'десять', 'одиннадцать']
+
+
+def check_clock(t, level):
+    ans = t["answer"]
+    h, m = map(int, ans[0].split(":"))
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        fail(f"time clock: недопустимое время {ans[0]}")
+    # Второй допустимый ответ — тот же момент в другом формате (12/24 ч)
+    h2, m2 = map(int, ans[1].split(":"))
+    if m2 != m or (h2 - h) % 12 != 0 or h2 == h:
+        fail(f"time clock: пара ответов {ans} не о одном времени")
+    # Кратность минут уровню
+    allowed = {"easy": {0, 30}, "medium": {0, 15, 30, 45}, "hard": set(range(0, 60, 5))}[level]
+    if m not in allowed:
+        fail(f"time clock {level}: минуты {m} не из {sorted(allowed)} ({ans[0]})")
+    text = t["text"]
+    if "<svg" in text:
+        # Формат «циферблат → цифры»: стрелки есть, текст словами не содержится
+        if "половина" in text or "четверть" in text or "ровно" in text:
+            fail(f"time clock: svg-задание со словесной формулировкой: {text[:60]}")
+        return
+    # Словесная формулировка: пересчитываем и сверяем с ответом
+    if level == "easy":
+        fail(f"time clock easy: словесная формулировка не предусмотрена: {text[:60]}")
+    if "без четверти" in text:
+        exp_m, kind = 45, "без четверти"
+    elif "половина" in text:
+        exp_m, kind = 30, "половина"
+    elif "четверть" in text:
+        exp_m, kind = 15, "четверть"
+    elif "ровно" in text:
+        exp_m, kind = 0, "ровно"
+    else:
+        mm = re.search(r"без (\d+) минут", text)
+        if not mm:
+            fail(f"time clock: нераспознанная формулировка {text[:60]}")
+            return
+        exp_m, kind = 60 - int(mm.group(1)), "без N минут"
+    if m != exp_m:
+        fail(f"time clock: «{kind}» != {m} мин в {text[:60]} (ответ {ans[0]})")
+    # «без N минут» — только N из {5,10,15,20,25}
+    if kind == "без N минут" and (60 - m) not in (5, 10, 15, 20, 25):
+        fail(f"time clock: N={60 - m} не из {{5,10,15,20,25}}: {text[:60]}")
+    # Час в формулировке согласован с ответом
+    for i, w in enumerate(HOUR_WORDS):
+        if re.search(rf"\b{w}\b", text):
+            if kind in ("ровно",):
+                exp_h = i % 12
+            else:
+                exp_h = (i - 1) % 12
+            if h % 12 != exp_h:
+                fail(f"time clock: час «{w}» != {h} в {text[:60]} (ответ {ans[0]})")
+            break
+    # Пояснение содержит разбор
+    if "=" not in t["explanation"]:
+        fail(f"time clock: нет разбора в пояснении: {t['explanation']}")
+
+
+def check_geometry(t):
+    text = t["text"]
+    if t["subtype"] == "perimeter":
+        m = re.match(r"^Сторона квадрата (\d+) см\.", text)
+        if m:
+            exp = 4 * int(m.group(1))
+        else:
+            m = re.match(r"^Длина прямоугольника (\d+) см, ширина (\d+) см\.", text)
+            exp = 2 * (int(m.group(1)) + int(m.group(2)))
+        if t["answer"] != exp or t.get("unit") != "см":
+            fail(f"geometry: perimeter неверен {text} answer={t['answer']}, верно {exp}")
+    elif t["subtype"] == "area":
+        m = re.match(r"^Сторона квадрата (\d+) см\.", text)
+        if m:
+            exp = int(m.group(1)) ** 2
+        else:
+            m = re.match(r"^Длина прямоугольника (\d+) см, ширина (\d+) см\.", text)
+            exp = int(m.group(1)) * int(m.group(2))
+        if t["answer"] != exp or t.get("unit") != "см²":
+            fail(f"geometry: area неверен {text} answer={t['answer']}, верно {exp}")
+    elif t["subtype"] == "side":
+        m = re.match(r"^Периметр квадрата (\d+) см\.", text)
+        if m:
+            exp = int(m.group(1)) // 4
+        else:
+            m = re.match(r"^Площадь прямоугольника (\d+) см², длина (\d+) см\.", text)
+            if m:
+                exp = int(m.group(1)) // int(m.group(2))
+                assert int(m.group(1)) % int(m.group(2)) == 0, text
+            else:
+                m = re.match(r"^Периметр прямоугольника (\d+) см, длина (\d+) см\.", text)
+                exp = int(m.group(1)) // 2 - int(m.group(2))
+        if t["answer"] != exp or t.get("unit") != "см":
+            fail(f"geometry: side неверен {text} answer={t['answer']}, верно {exp}")
+
+
+N = 1000
+subtypes_seen = {}
+
+# Тема 1: умножение (3 уровня)
+for level in ["easy", "medium", "hard"]:
+    tasks = json.loads(ctx.eval(f"__gen('multiplication','{level}',{N})"))
+    for t in tasks:
+        check_common(t, "multiplication")
+        check_arith(t, "multiplication")
+        subtypes_seen.setdefault(("multiplication", level), set()).add(t["subtype"])
+        if level == "easy" and t["subtype"] == "mul":
+            a = int(t["text"].split(" × ")[0])
+            if a not in (2, 3, 5):
+                fail(f"multiplication easy: множитель {a} не из {{2,3,5}}: {t['text']}")
+
+# Тема 2: сложение/вычитание (3 уровня)
+for level in ["easy", "medium", "hard"]:
+    tasks = json.loads(ctx.eval(f"__gen('addsub','{level}',{N})"))
+    for t in tasks:
+        check_common(t, "addsub")
+        check_arith(t, "addsub")
+        m = re.match(r"^(\d+) ([+−]) (\d+) = \?$", t["text"])
+        a, op, b = int(m.group(1)), m.group(2), int(m.group(3))
+        res = a + b if op == "+" else a - b
+        if res < 0:
+            fail(f"addsub {level}: отрицательный результат {t['text']}")
+        if level in ("easy", "medium") and max(a, b, res) > 100:
+            fail(f"addsub {level}: за пределами 100: {t['text']}")
+        if level == "hard" and max(a, b, res) > 1000:
+            fail(f"addsub hard: за пределами 1000: {t['text']}")
+        if level == "easy":
+            if op == "+" and (a % 10) + (b % 10) >= 10:
+                fail(f"addsub easy: переход через десяток {t['text']}")
+            if op == "−" and (a % 10) < (b % 10):
+                fail(f"addsub easy: переход через десяток {t['text']}")
+        subtypes_seen.setdefault(("addsub", level), set()).add(t["subtype"])
+
+# Тема 3: порядок действий (3 уровня)
+for level in ["easy", "medium", "hard"]:
+    tasks = json.loads(ctx.eval(f"__gen('order','{level}',{N})"))
+    for t in tasks:
+        check_common(t, "order")
+        check_arith(t, "order")
+        check_mul_limit(t["text"], "order")
+        if "1)" not in t["explanation"]:
+            fail(f"order: нет пошагового пояснения: {t['text']}")
+        text = t["text"]
+        has_paren = "(" in text
+        n_mul = len(re.findall(r"×", text))
+        if level == "easy" and (has_paren or n_mul != 1 or "÷" in text):
+            fail(f"order easy: только 2 действия без скобок ожидались: {text}")
+        if level == "medium" and not (has_paren or "÷" in text):
+            fail(f"order medium: скобки или деление ожидались: {text}")
+        if level == "hard" and n_mul != 2:
+            fail(f"order hard: 3 действия ожидались: {text}")
+        subtypes_seen.setdefault(("order", level), set()).add(t["subtype"])
+
+# Тема 4: длина (3 уровня)
+for level in ["easy", "medium", "hard"]:
+    tasks = json.loads(ctx.eval(f"__gen('length','{level}',{N})"))
+    for t in tasks:
+        check_common(t, "length")
+        check_mul_limit(t["text"], "length")
+        if level == "easy":
+            if t["subtype"] != "convert":
+                fail(f"length easy: только convert ожидался: {t['text']}")
+            check_units_convert(t, LEN, "length")
+            # Только соседние единицы с шагом 10
+            m = re.match(r"^(\d+) (\S+) = _ (\?|\S+)$", t["text"])
+            u_from = m.group(2)
+            u_to = t.get("answerUnit") or m.group(3)
+            if LEN[u_from] // LEN[u_to] != 10:
+                fail(f"length easy: не шаг 10: {t['text']}")
+        elif t["subtype"] == "convert":
+            # В модуле длины выпадающий список единиц убран: единица ответа
+            # всегда зафиксирована в условии
+            if "unitOptions" in t:
+                fail(f"length: convert с unitOptions недопустим: {t['text']}")
+            if not t.get("unit"):
+                fail(f"length: convert без зафиксированной единицы: {t['text']}")
+            check_units_convert(t, LEN, "length")
+        elif t["subtype"] == "compare":
+            check_units_compare(t, LEN, "length")
+        else:
+            if level != "hard":
+                fail(f"length {level}: неожиданный calc: {t['text']}")
+            check_units_calc(t, LEN, "length")
+        subtypes_seen.setdefault(("length", level), set()).add(t["subtype"])
+
+# Тема 5: время (3 уровня)
+for level in ["easy", "medium", "hard"]:
+    tasks = json.loads(ctx.eval(f"__gen('time','{level}',{N})"))
+    for t in tasks:
+        check_common(t, "time")
+        check_mul_limit(t["text"], "time")
+        if t["subtype"] == "clock":
+            check_clock(t, level)
+        elif t["subtype"] == "convert":
+            if re.match(r"^\d+ \S+ \d+ \S+ = _ \S+$", t["text"]):
+                # Составной перевод — только сложный уровень
+                if level != "hard":
+                    fail(f"time {level}: составной convert не ожидался: {t['text']}")
+                check_time_composite(t)
+            else:
+                check_units_convert(t, TIME, "time")
+                if level == "easy":
+                    m = re.match(r"^(\d+) (\S+) = _ (\?|\S+)$", t["text"])
+                    if m.group(2) != "мин" or (t.get("answerUnit") or m.group(3)) != "с":
+                        fail(f"time easy: только мин↔с ожидались: {t['text']}")
+        else:
+            if level != "medium":
+                fail(f"time {level}: compare только на среднем уровне: {t['text']}")
+            check_units_compare(t, TIME, "time")
+        subtypes_seen.setdefault(("time", level), set()).add(t["subtype"])
+
+# Тема 6: масса (3 уровня)
+for level in ["easy", "medium", "hard"]:
+    tasks = json.loads(ctx.eval(f"__gen('mass','{level}',{N})"))
+    for t in tasks:
+        check_common(t, "mass")
+        check_mul_limit(t["text"], "mass")
+        if level == "easy":
+            if t["subtype"] != "convert":
+                fail(f"mass easy: только convert ожидался: {t['text']}")
+            check_units_convert(t, MASS, "mass")
+            m = re.match(r"^(\d+) (\S+) = _ (\?|\S+)$", t["text"])
+            if m.group(2) != "кг" or (t.get("answerUnit") or m.group(3)) != "г":
+                fail(f"mass easy: только кг↔г ожидались: {t['text']}")
+        elif t["subtype"] == "convert":
+            check_units_convert(t, MASS, "mass")
+        elif t["subtype"] == "compare":
+            check_units_compare(t, MASS, "mass")
+        else:
+            if level != "hard":
+                fail(f"mass {level}: неожиданный calc: {t['text']}")
+            check_units_calc(t, MASS, "mass")
+        subtypes_seen.setdefault(("mass", level), set()).add(t["subtype"])
+
+# Тема 7: геометрия (3 уровня)
+for level in ["easy", "medium", "hard"]:
+    tasks = json.loads(ctx.eval(f"__gen('geometry','{level}',{N})"))
+    for t in tasks:
+        check_common(t, "geometry")
+        check_geometry(t)
+        # Стороны 2–9: S ≤ 81, P ≤ 36
+        nums = [int(x) for x in re.findall(r"(\d+) см", t["text"])]
+        if t["subtype"] in ("perimeter", "area") and any(n > 9 for n in nums):
+            fail(f"geometry: сторона за пределами 2–9: {t['text']}")
+        if level == "easy":
+            if t["subtype"] not in ("perimeter", "area") or "квадрат" not in t["text"]:
+                fail(f"geometry easy: только P/S квадрата: {t['text']}")
+        elif level == "medium":
+            if t["subtype"] not in ("perimeter", "area") or "прямоугольник" not in t["text"]:
+                fail(f"geometry medium: только P/S прямоугольника: {t['text']}")
+        else:
+            if t["subtype"] != "side":
+                fail(f"geometry hard: только обратные задачи: {t['text']}")
+        subtypes_seen.setdefault(("geometry", level), set()).add(t["subtype"])
+
+# Проверка makeSet: без повторов, нужное количество
+for topic, level in [("multiplication", "easy"), ("multiplication", "medium"), ("multiplication", "hard"),
+                     ("addsub", "easy"), ("addsub", "medium"), ("addsub", "hard")] + \
+                    [(topic, level) for topic in ["order", "length", "time", "mass", "geometry"]
+                     for level in ["easy", "medium", "hard"]]:
+    s = json.loads(ctx.eval(f"__makeSet('{topic}','{level}',15)"))
+    if len(s) != 15:
+        fail(f"makeSet {topic}/{level}: получено {len(s)} вместо 15")
+    keys = [f"{t['text']}|{t['answer']}|{t.get('answerUnit','')}" for t in s]
+    if len(set(keys)) != len(keys):
+        fail(f"makeSet {topic}/{level}: есть повторы")
+
+# Проверка работы над ошибками: эмулируем сессии с ошибками
+ctx.eval("""
+window.Storage.saveSession({topicId:'multiplication', total:10, correct:7, mode:'train',
+  errors:[{subtype:'gap'},{subtype:'gap'},{subtype:'div'}], hintsUsed:2, date:''});
+window.Storage.saveSession({topicId:'length', total:10, correct:8, mode:'train',
+  errors:[{subtype:'compare'},{subtype:'convert'}], date:''});
+""")
+review = json.loads(ctx.eval("JSON.stringify(window.Tasks.makeErrorReviewSet(10))"))
+if not review:
+    fail("makeErrorReviewSet: пустой набор при наличии ошибок")
+for t in review:
+    if (t["topicId"], t["subtype"]) not in [("multiplication", "gap"), ("multiplication", "div"),
+                                            ("length", "compare"), ("length", "convert")]:
+        fail(f"makeErrorReviewSet: посторонний подтип {t['topicId']}/{t['subtype']}")
+
+# Проверка Storage
+acc = ctx.eval("JSON.stringify(window.Storage.getTopicStats('multiplication'))")
+acc = json.loads(acc)
+if acc["accuracy"] != 70 or acc["stars"] != 1 or acc["lastAccuracy"] != 70:
+    fail(f"Storage.getTopicStats неверен: {acc}")
+if ctx.eval("window.Storage.getStreak()") != 1:
+    fail("Storage.getStreak != 1 после сессий сегодня")
+hist = json.loads(ctx.eval("JSON.stringify(window.Storage.getHistory(10))"))
+if len(hist) != 2:
+    fail(f"Storage.getHistory: {len(hist)} сессий вместо 2")
+# hintsUsed сохраняется в записи сессии; старые записи без поля читаются как 0
+by_topic = {s["topicId"]: s for s in hist}
+if by_topic["multiplication"].get("hintsUsed") != 2:
+    fail(f"Storage: hintsUsed не сохранился: {by_topic['multiplication']}")
+if by_topic["length"].get("hintsUsed", 0) != 0:
+    fail(f"Storage: hintsUsed по умолчанию должен быть 0: {by_topic['length']}")
+
+# --- Монетки: начисление и сохранение после «перезагрузки» ---
+ctx.eval("window.Storage.addCoins(5)")
+ctx.eval("window.Storage.addCoins(3)")
+if ctx.eval("window.Storage.getCoins()") != 8:
+    fail(f"Storage.getCoins: ожидалось 8, получено {ctx.eval('window.Storage.getCoins()')}")
+# Эмуляция перезагрузки страницы: новый JS-контекст, тот же localStorage
+store_dump = ctx.eval("JSON.stringify(__store)")
+ctx2 = quickjs.Context()
+ctx2.eval("var window = {}; var __store = JSON.parse(" + json.dumps(store_dump) + ");"
+          "var localStorage = {getItem:function(k){return __store[k]||null;},"
+          "setItem:function(k,v){__store[k]=v;},removeItem:function(k){delete __store[k];}};")
+with open(f"{BASE}/storage.js", encoding="utf-8") as fh:
+    ctx2.eval(fh.read())
+if ctx2.eval("window.Storage.getCoins()") != 8:
+    fail("Монетки не сохранились после перезагрузки страницы")
+# Старые данные без поля coins (миграция): getCoins должен вернуть 0, а не упасть
+ctx2.eval("__store['mathTrainer.v1'] = JSON.stringify({sessions:[], stars:{}, streak:2, lastActivityDate:'2026-08-01'})")
+if ctx2.eval("window.Storage.getCoins()") != 0:
+    fail("Миграция старых данных: getCoins должен вернуть 0 при отсутствии поля coins")
+ctx2.eval("window.Storage.addCoins(2)")
+if ctx2.eval("window.Storage.getCoins()") != 2:
+    fail("Миграция старых данных: addCoins сломался")
+# Сохранение сессии без hintsUsed (старый вызов) не падает и пишет 0
+ctx2.eval("window.Storage.saveSession({topicId:'mass', total:5, correct:5, mode:'train', errors:[], date:''})")
+_mig_hist = json.loads(ctx2.eval("JSON.stringify(window.Storage.getHistory(1))"))
+if _mig_hist[0].get("hintsUsed") != 0:
+    fail(f"Миграция: сессия без hintsUsed должна сохраниться с 0: {_mig_hist[0]}")
+
+ctx.eval("window.Storage.resetAll()")
+if json.loads(ctx.eval("JSON.stringify(window.Storage.getHistory(10))")) != []:
+    fail("Storage.resetAll не очистил историю")
+if ctx.eval("window.Storage.getCoins()") != 0:
+    fail("Storage.resetAll не сбросил монетки")
+
+# --- Согласованность DOM: все id, к которым обращается app.js, есть в index.html ---
+# (частый источник багов при загрузке/перезагрузке страницы)
+with open("index.html", encoding="utf-8") as fh:
+    html = fh.read()
+with open(f"{BASE}/app.js", encoding="utf-8") as fh:
+    appjs = fh.read()
+html_ids = set(re.findall(r'id="([^"]+)"', html))
+js_ids = set(re.findall(r"\$\('([^']+)'\)", appjs))
+missing = js_ids - html_ids
+if missing:
+    fail(f"app.js обращается к отсутствующим в index.html id: {sorted(missing)}")
+# Все подключаемые скрипты существуют
+import os
+for src in re.findall(r'<script src="([^"]+)"', html):
+    if not os.path.exists(src):
+        fail(f"index.html подключает несуществующий скрипт: {src}")
+# Классы состояний котёнка используются и в CSS
+with open("css/style.css", encoding="utf-8") as fh:
+    css = fh.read()
+for cls in ["kitten-neutral", "kitten-happy", "kitten-sad", "coins-display", "result-coins"]:
+    if cls not in css and cls not in html:
+        fail(f"Класс {cls} не найден ни в CSS, ни в HTML")
+for mood in ["kitten-happy", "kitten-sad"]:
+    if mood not in css:
+        fail(f"Состояние котёнка {mood} не описано в CSS")
+
+print("Покрытые подтипы:", {f"{k[0]}/{k[1]}": sorted(v) for k, v in subtypes_seen.items()})
+if errors:
+    print(f"\nНАЙДЕНО ОШИБОК: {len(errors)}")
+    seen = set()
+    for e in errors:
+        if e not in seen:
+            seen.add(e)
+            print(" -", e)
+        if len(seen) >= 30:
+            break
+    sys.exit(1)
+print(f"\nВсе проверки пройдены ({N} заданий на тему/уровень + makeSet + review + Storage).")
