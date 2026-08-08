@@ -1,0 +1,612 @@
+/* Стили «Математического тренажёра»: яркий дружелюбный дизайн для ребёнка 8–9 лет */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Comic Sans MS', 'Segoe UI', Verdana, sans-serif;
+  font-size: 20px;
+  /* Спокойный тёмно-зелёный фон вместо яркого градиента */
+  background: #2e4b3f;
+  min-height: 100vh;
+  color: #333;
+}
+
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1, h2 {
+  text-align: center;
+  color: #fff;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.25);
+  margin-bottom: 16px;
+}
+
+h3 {
+  margin: 16px 0 8px;
+  color: #cfe3d6;
+}
+
+/* --- Приглушённые оттенки фона у учебных блоков --- */
+/* Экраны настройки и задания получают фон от класса .module-* (цвет темы) */
+#screen-task,
+#screen-setup {
+  min-height: 100vh;
+}
+
+/* Экран результата — приглушённый оливковый */
+#screen-result {
+  background: #445540;
+  min-height: 100vh;
+}
+
+/* Экран настройки — фон от класса .module-* (см. выше) */
+
+/* Экран статистики — холодный тёмно-зелёный */
+#screen-stats {
+  background: #2b4238;
+  min-height: 100vh;
+}
+
+/* --- Экраны --- */
+.screen {
+  display: none;
+  animation: fadeIn 0.3s ease;
+}
+
+.screen.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Серия дней --- */
+.streak {
+  text-align: center;
+  font-size: 22px;
+  font-weight: bold;
+  color: #fff8dc;
+  margin-bottom: 20px;
+}
+
+/* --- Карточки тем --- */
+.topics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 700px) {
+  .topics-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 420px) {
+  .topics-grid { grid-template-columns: 1fr; }
+}
+
+/* Пастельные насыщенные цвета модулей: карточка, настройка и задание темы
+   окрашены в один цвет — розовый, синий, песочный, зелёный, фиолетовый,
+   оранжевый, бирюзовый, голубой (работа над ошибками) */
+.module-multiplication { background: #f2c9d4; } /* розовый */
+.module-addsub { background: #b8cfe8; }         /* синий */
+.module-order { background: #ead9a8; }          /* песочный */
+.module-length { background: #bfe0bf; }         /* зелёный */
+.module-time { background: #d3c2ec; }           /* фиолетовый */
+.module-mass { background: #f2cfa8; }           /* оранжевый */
+.module-geometry { background: #aee0da; }       /* бирюзовый */
+.module-review { background: #c2e2f0; }         /* голубой */
+
+/* Карточки тем на главной — в цвет своего модуля */
+.topic-card {
+  border: none;
+  border-radius: 18px;
+  padding: 18px 12px;
+  min-height: 110px;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease;
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+.topic-review { border: 3px dashed #b07a2a; }
+
+/* На пастельном фоне модуля текст делаем тёмным для контраста */
+#screen-task[class*="module-"] .task-header,
+#screen-setup[class*="module-"] h2 {
+  color: #2b4238;
+  text-shadow: none;
+}
+
+.topics-grid .topic-card {
+  margin-bottom: 0;
+}
+
+.topic-card:active {
+  transform: scale(0.96);
+}
+
+.topic-title {
+  font-size: 22px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.topic-stars {
+  font-size: 24px;
+  color: #b8860b;
+}
+
+.topic-acc {
+  font-size: 15px;
+  opacity: 0.85;
+}
+
+/* Цвета карточек тем задаются классами .module-* (см. выше) */
+
+/* --- Кнопки --- */
+.btn {
+  font-family: inherit;
+  font-size: 22px;
+  border: none;
+  border-radius: 16px;
+  padding: 14px 28px;
+  min-height: 56px;
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease;
+}
+
+.btn:active {
+  transform: scale(0.96);
+}
+
+.btn-primary {
+  background: #ff8c42;
+  color: #fff;
+  font-weight: bold;
+}
+
+.btn-secondary {
+  background: #ffffff;
+  color: #2d5a1e;
+}
+
+.btn-danger {
+  background: #e05252;
+  color: #fff;
+}
+
+.btn small {
+  font-size: 15px;
+  font-weight: normal;
+}
+
+/* --- Экран настройки --- */
+.level-select {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin: 20px 0;
+  flex-wrap: wrap;
+}
+
+.level-select button {
+  font-family: inherit;
+  font-size: 20px;
+  padding: 12px 24px;
+  min-height: 56px;
+  border-radius: 14px;
+  border: 3px solid transparent;
+  background: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+}
+
+.level-select button.selected {
+  border-color: #ff8c42;
+  background: #fff0e2;
+  font-weight: bold;
+}
+
+.mode-buttons {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+#btn-setup-back {
+  display: block;
+  margin: 0 auto;
+}
+
+/* --- Экран задания --- */
+.task-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 22px;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 12px;
+}
+
+.task-card {
+  background: #f4f1e4;
+  border-radius: 22px;
+  padding: 28px 20px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2);
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.task-text {
+  font-size: 46px;
+  font-weight: bold;
+  margin-bottom: 20px;
+  color: #2d5a1e;
+}
+
+.answer-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+#answer-input {
+  font-family: inherit;
+  font-size: 40px;
+  font-weight: bold;
+  text-align: center;
+  width: 200px;
+  padding: 8px;
+  border: 3px solid #7fb069;
+  border-radius: 14px;
+  background: #f6fff2;
+  color: #2d5a1e;
+}
+
+#unit-select, .unit-label {
+  font-family: inherit;
+  font-size: 28px;
+  padding: 8px;
+  border-radius: 14px;
+  border: 3px solid #7fb069;
+  background: #f6fff2;
+  color: #2d5a1e;
+}
+
+.unit-label {
+  border: none;
+  background: none;
+  font-weight: bold;
+}
+
+#sign-buttons {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.sign-btn {
+  font-size: 36px;
+  width: 90px;
+  background: #6fb3e0;
+  color: #fff;
+  font-weight: bold;
+}
+
+/* --- Клавиатура --- */
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  max-width: 360px;
+  margin: 0 auto 18px;
+}
+
+.keypad button {
+  font-family: inherit;
+  font-size: 30px;
+  font-weight: bold;
+  min-height: 64px;
+  border: none;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #2d5a1e;
+  cursor: pointer;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+}
+
+.keypad button:active {
+  transform: scale(0.94);
+  background: #eafbe0;
+}
+
+.task-actions {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+}
+
+/* --- Обратная связь и подсказка --- */
+.feedback {
+  font-size: 24px;
+  font-weight: bold;
+  min-height: 32px;
+}
+
+.feedback-good { color: #2e8b22; }
+.feedback-bad { color: #c0392b; }
+
+.hint {
+  margin-top: 10px;
+  padding: 12px;
+  background: #fff8dc;
+  border: 2px dashed #d4a017;
+  border-radius: 12px;
+  font-size: 18px;
+  color: #6b5300;
+  text-align: left;
+}
+
+/* --- Анимации ответа --- */
+@keyframes correctFlash {
+  0% { box-shadow: 0 0 0 0 rgba(76, 217, 100, 0.9); }
+  50% { box-shadow: 0 0 0 22px rgba(76, 217, 100, 0.4); background: #e6ffe6; }
+  100% { box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2); }
+}
+
+@keyframes wrongShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-12px); }
+  40% { transform: translateX(12px); }
+  60% { transform: translateX(-8px); }
+  80% { transform: translateX(8px); }
+}
+
+.correct-flash {
+  animation: correctFlash 0.7s ease;
+}
+
+.wrong-shake {
+  animation: wrongShake 0.5s ease;
+}
+
+/* --- Экран результата --- */
+.result-stars {
+  text-align: center;
+  font-size: 56px;
+  color: #ffd700;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  margin-bottom: 12px;
+}
+
+.result-summary {
+  text-align: center;
+  font-size: 24px;
+  color: #fff;
+  margin-bottom: 20px;
+}
+
+.result-errors {
+  background: #f4f1e4;
+  border-radius: 18px;
+  padding: 18px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.no-errors {
+  text-align: center;
+  font-size: 22px;
+  color: #2e8b22;
+  font-weight: bold;
+}
+
+.error-item {
+  border-bottom: 1px solid #ddd;
+  padding: 10px 0;
+  font-size: 18px;
+}
+
+.error-item:last-child {
+  border-bottom: none;
+}
+
+.error-task {
+  font-size: 22px;
+  font-weight: bold;
+  color: #2d5a1e;
+}
+
+.error-expl {
+  color: #666;
+  margin-top: 4px;
+}
+
+#btn-result-home {
+  display: block;
+  margin: 0 auto;
+}
+
+/* --- Экран статистики --- */
+.stats-box {
+  background: #eef2ea;
+  border-radius: 16px;
+  padding: 14px;
+  margin-bottom: 8px;
+}
+
+.stats-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid #eee;
+  font-size: 18px;
+}
+
+.stats-row:last-child {
+  border-bottom: none;
+}
+
+.stats-actions {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+/* --- Маскот-котёнок: состояния neutral / happy / sad --- */
+.kitten {
+  text-align: center;
+  margin-bottom: 6px;
+}
+
+.kitten svg {
+  display: inline-block;
+}
+
+/* По умолчанию видны только нейтральные глаза и ротик */
+.k-eyes-happy,
+.k-mouth-happy,
+.k-mouth-sad {
+  display: none;
+}
+
+/* Радость: дуги-глаза, открытый ротик, прыжок и машущая лапка */
+.kitten-happy .k-eyes-open,
+.kitten-happy .k-mouth-neutral {
+  display: none;
+}
+
+.kitten-happy .k-eyes-happy,
+.kitten-happy .k-mouth-happy {
+  display: block;
+}
+
+@keyframes kittenJump {
+  0%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-16px); }
+  70% { transform: translateY(2px); }
+}
+
+.kitten-happy svg {
+  animation: kittenJump 0.6s ease;
+}
+
+@keyframes kittenWave {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-30deg); }
+}
+
+.kitten-happy .k-paw {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+  animation: kittenWave 0.5s ease 2;
+}
+
+/* Грусть: опущенные ушки и грустный ротик */
+.kitten-sad .k-mouth-neutral {
+  display: none;
+}
+
+.kitten-sad .k-mouth-sad {
+  display: block;
+}
+
+.kitten-sad .k-ear {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+}
+
+.kitten-sad .k-ear-left {
+  transform: rotate(-28deg);
+}
+
+.kitten-sad .k-ear-right {
+  transform: rotate(28deg);
+}
+
+.kitten-sad svg {
+  transform: translateY(4px);
+}
+
+/* --- Монетки --- */
+.coins-display {
+  text-align: center;
+  font-size: 24px;
+  font-weight: bold;
+  color: #ffd97a;
+  margin-bottom: 20px;
+}
+
+.result-coins {
+  text-align: center;
+  font-size: 24px;
+  font-weight: bold;
+  color: #ffd97a;
+  margin-bottom: 16px;
+}
+
+/* --- Оверлей подсказки (соотношения мер) --- */
+.hint-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.hint-card {
+  position: relative;
+  background: #f4efe4;
+  color: #333333;
+  border-radius: 16px;
+  padding: 24px 32px;
+  max-width: 340px;
+  width: 85%;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.hint-card h3 {
+  margin-top: 0;
+  text-align: center;
+}
+
+.hint-table p {
+  margin: 6px 0;
+  font-size: 18px;
+}
+
+.hint-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+  color: #666666;
+}

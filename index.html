@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Математический тренажёр</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Главный экран -->
+  <section class="screen active" id="screen-home">
+    <div class="container">
+      <h1>Математический тренажёр</h1>
+      <div id="streak-display" class="streak"></div>
+      <div id="coins-display" class="coins-display" title="Твои монетки">🪙 0</div>
+      <div id="topics-grid" class="topics-grid"></div>
+      <button id="btn-error-review" class="topic-card module-review">
+        <div class="topic-title">Работа над ошибками</div>
+        <div class="topic-acc">Повтори то, что не получилось</div>
+      </button>
+      <button id="btn-stats" class="btn btn-secondary">Статистика (для родителей)</button>
+    </div>
+  </section>
+
+  <!-- Экран настройки: уровень и режим -->
+  <section class="screen" id="screen-setup">
+    <div class="container">
+      <h2 id="setup-topic-name"></h2>
+      <div id="level-select" class="level-select"></div>
+      <div class="mode-buttons">
+        <button id="btn-mode-train" class="btn btn-primary">Тренировка<br><small>10 примеров</small></button>
+        <button id="btn-mode-test" class="btn btn-primary">Контроль<br><small>15 примеров, 10 минут</small></button>
+      </div>
+      <button id="btn-setup-back" class="btn btn-secondary">Назад</button>
+    </div>
+  </section>
+
+  <!-- Экран задания -->
+  <section class="screen" id="screen-task">
+    <div class="container">
+      <div class="task-header">
+        <span id="task-progress"></span>
+        <span id="task-timer"></span>
+      </div>
+      <div id="task-card" class="task-card">
+        <!-- Маскот: бело-рыжий котёнок (inline SVG, 3 состояния: neutral/happy/sad) -->
+        <div id="kitten" class="kitten kitten-neutral" aria-hidden="true">
+          <svg viewBox="0 0 120 120" width="100" height="100">
+            <!-- ушки -->
+            <g class="k-ears">
+              <polygon class="k-ear k-ear-left" points="30,40 38,10 56,32" fill="#ffffff" stroke="#d9c9a8" stroke-width="2"/>
+              <polygon class="k-ear k-ear-right" points="90,40 82,10 64,32" fill="#f0a35e" stroke="#d98e4a" stroke-width="2"/>
+            </g>
+            <!-- голова -->
+            <circle cx="60" cy="70" r="40" fill="#ffffff" stroke="#e0d6c2" stroke-width="2"/>
+            <!-- рыжее пятно на голове -->
+            <path d="M60,30 A40,40 0 0 1 98,58 L60,70 Z" fill="#f0a35e"/>
+            <!-- глаза: обычные -->
+            <g class="k-eyes-open">
+              <circle cx="45" cy="68" r="4.5" fill="#333333"/>
+              <circle cx="75" cy="68" r="4.5" fill="#333333"/>
+            </g>
+            <!-- глаза: радостные дуги -->
+            <g class="k-eyes-happy">
+              <path d="M39,70 q6,-8 12,0" stroke="#333333" stroke-width="3" fill="none" stroke-linecap="round"/>
+              <path d="M69,70 q6,-8 12,0" stroke="#333333" stroke-width="3" fill="none" stroke-linecap="round"/>
+            </g>
+            <!-- носик -->
+            <polygon points="56,78 64,78 60,83" fill="#e88ca0"/>
+            <!-- ротик: три состояния -->
+            <path class="k-mouth-neutral" d="M52,88 q8,5 16,0" stroke="#333333" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+            <path class="k-mouth-happy" d="M48,86 q12,14 24,0 z" fill="#b5555e" stroke="#333333" stroke-width="2"/>
+            <path class="k-mouth-sad" d="M52,92 q8,-6 16,0" stroke="#333333" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+            <!-- лапка, которая машет при радости -->
+            <ellipse class="k-paw" cx="98" cy="92" rx="9" ry="12" fill="#f0a35e" stroke="#d98e4a" stroke-width="2"/>
+          </svg>
+        </div>
+        <div id="task-text" class="task-text"></div>
+        <div class="answer-row">
+          <input id="answer-input" type="text" inputmode="none" autocomplete="off" readonly placeholder="?">
+          <select id="unit-select" style="display:none"></select>
+          <span id="unit-label" class="unit-label" style="display:none"></span>
+        </div>
+        <div id="sign-buttons" style="display:none">
+          <button data-sign="&gt;" class="btn sign-btn">&gt;</button>
+          <button data-sign="&lt;" class="btn sign-btn">&lt;</button>
+          <button data-sign="=" class="btn sign-btn">=</button>
+        </div>
+        <div id="feedback" class="feedback"></div>
+        <div id="hint-area" class="hint" style="display:none"></div>
+      </div>
+      <div id="keypad" class="keypad">
+        <button data-key="1">1</button>
+        <button data-key="2">2</button>
+        <button data-key="3">3</button>
+        <button data-key="4">4</button>
+        <button data-key="5">5</button>
+        <button data-key="6">6</button>
+        <button data-key="7">7</button>
+        <button data-key="8">8</button>
+        <button data-key="9">9</button>
+        <button data-key="backspace">⌫</button>
+        <button data-key="0">0</button>
+        <button data-key=":" id="key-colon" style="display:none">:</button>
+      </div>
+      <div class="task-actions">
+        <button id="btn-hint" class="btn btn-secondary" style="display:none">💡 Подсказка</button>
+        <button id="btn-check" class="btn btn-primary">Проверить</button>
+        <button id="btn-quit" class="btn btn-secondary">Выйти</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Оверлей подсказки: справочная таблица соотношений мер -->
+  <div id="hint-overlay" class="hint-overlay" style="display:none">
+    <div class="hint-card">
+      <button id="hint-close" class="hint-close" aria-label="Закрыть">✕</button>
+      <h3>Соотношения мер</h3>
+      <div id="hint-table-length" class="hint-table">
+        <p>1 км = 1000 м</p>
+        <p>1 м = 10 дм = 100 см</p>
+        <p>1 дм = 10 см</p>
+        <p>1 см = 10 мм</p>
+      </div>
+      <div id="hint-table-time" class="hint-table">
+        <p>1 ч = 60 мин</p>
+        <p>1 мин = 60 с</p>
+        <p>1 сутки = 24 ч</p>
+        <p>1 неделя = 7 суток</p>
+        <p>1 год = 12 мес.</p>
+      </div>
+      <div id="hint-table-mass" class="hint-table">
+        <p>1 т = 10 ц = 1000 кг</p>
+        <p>1 ц = 100 кг</p>
+        <p>1 кг = 1000 г</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Экран результата -->
+  <section class="screen" id="screen-result">
+    <div class="container">
+      <h2 id="result-grade"></h2>
+      <div id="result-stars" class="result-stars"></div>
+      <div id="result-summary" class="result-summary"></div>
+      <div id="result-coins" class="result-coins"></div>
+      <div id="result-errors" class="result-errors"></div>
+      <button id="btn-result-home" class="btn btn-primary">На главную</button>
+    </div>
+  </section>
+
+  <!-- Экран статистики -->
+  <section class="screen" id="screen-stats">
+    <div class="container">
+      <h2>Статистика</h2>
+      <div id="stats-streak" class="streak"></div>
+      <h3>Точность по темам</h3>
+      <div id="stats-topics" class="stats-box"></div>
+      <h3>Последние сессии</h3>
+      <div id="stats-history" class="stats-box"></div>
+      <div class="stats-actions">
+        <button id="btn-reset" class="btn btn-danger">Сбросить прогресс</button>
+        <button id="btn-stats-home" class="btn btn-secondary">На главную</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Скрипты: сначала утилиты и генераторы, затем хранилище, фасад и UI -->
+  <script src="js/utils.js"></script>
+  <script src="js/generators/multiplication.js"></script>
+  <script src="js/generators/addsub.js"></script>
+  <script src="js/generators/order.js"></script>
+  <script src="js/generators/length.js"></script>
+  <script src="js/generators/time.js"></script>
+  <script src="js/generators/mass.js"></script>
+  <script src="js/generators/geometry.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/tasks.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
